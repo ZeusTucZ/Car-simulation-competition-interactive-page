@@ -5,9 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import sin
 
-
-STANDARD_GRAVITY = 9.81
-
+from .constants import STANDARD_GRAVITY
 
 @dataclass(frozen=True)
 class ForceBreakdown:

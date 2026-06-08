@@ -2,29 +2,19 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from bisect import bisect_left
+from collections.abc import Sequence
+from math import pi
 
+from ..models.simulation_result import (
+    ForceBreakdownResult,
+    SimulationHistoryPoint,
+    SimulationResult,
+)
+from ..models.track_result import TrackPoint
+from .constants import STANDARD_GRAVITY
 from .efficiency import calculate_efficiency, calculate_energy_used
-from .forces import STANDARD_GRAVITY, calculate_forces
-
-
-class SimulationHistoryPoint(TypedDict):
-    """Position and speed data for UI visualization."""
-
-    time: float
-    position: float
-    speed: float
-
-
-class SimulationResult(TypedDict):
-    """Summary and history data returned to the UI."""
-
-    final_time: float
-    final_speed: float
-    total_distance: float
-    energy_used: float
-    efficiency: float
-    history: list[SimulationHistoryPoint]
+from .forces import calculate_forces
 
 
 def calculate_acceleration(net_force: float, mass: float) -> float:
@@ -51,6 +41,124 @@ def update_position(current_position: float, velocity: float, time_step: float) 
     return current_position + velocity * time_step
 
 
+def get_track_slope_angle(
+    track_points: Sequence[TrackPoint] | None,
+    distance: float,
+    fallback_road_angle: float,
+) -> float:
+    """Return the track slope angle at a distance, or the fallback road angle."""
+    track_point = get_track_point_at_distance(track_points, distance)
+
+    if track_point is None:
+        return fallback_road_angle
+
+    return track_point.slope_angle
+
+
+def get_track_point_at_distance(
+    track_points: Sequence[TrackPoint] | None,
+    distance: float,
+) -> TrackPoint | None:
+    """Return an interpolated track point for a distance along the track."""
+    if not track_points:
+        return None
+
+    if len(track_points) == 1:
+        return track_points[0]
+
+    track_length = track_points[-1].distance
+    if track_length <= 0:
+        return track_points[0]
+
+    track_distance = distance % track_length
+    point_distances = [point.distance for point in track_points]
+    next_index = bisect_left(point_distances, track_distance)
+
+    if next_index == 0:
+        return track_points[0]
+
+    if next_index >= len(track_points):
+        return track_points[-1]
+
+    previous_point = track_points[next_index - 1]
+    next_point = track_points[next_index]
+    segment_distance = next_point.distance - previous_point.distance
+
+    if segment_distance <= 0:
+        return previous_point
+
+    interpolation = (track_distance - previous_point.distance) / segment_distance
+
+    return TrackPoint(
+        x=_interpolate(previous_point.x, next_point.x, interpolation),
+        y=_interpolate(previous_point.y, next_point.y, interpolation),
+        elevation=_interpolate(
+            previous_point.elevation,
+            next_point.elevation,
+            interpolation,
+        ),
+        distance=track_distance,
+        heading=_interpolate_angle(
+            previous_point.heading,
+            next_point.heading,
+            interpolation,
+        ),
+        slope_angle=_interpolate(
+            previous_point.slope_angle,
+            next_point.slope_angle,
+            interpolation,
+        ),
+        grade_percent=_interpolate(
+            previous_point.grade_percent,
+            next_point.grade_percent,
+            interpolation,
+        ),
+        curvature=_interpolate(
+            previous_point.curvature,
+            next_point.curvature,
+            interpolation,
+        ),
+    )
+
+
+def create_history_point(
+    *,
+    time: float,
+    position: float,
+    speed: float,
+    distance: float,
+    track_points: Sequence[TrackPoint] | None,
+    fallback_road_angle: float,
+) -> SimulationHistoryPoint:
+    """Create a UI history point, mapped to the track when track data exists."""
+    track_point = get_track_point_at_distance(track_points, distance)
+
+    if track_point is None:
+        return SimulationHistoryPoint(
+            time=time,
+            position=position,
+            speed=abs(speed),
+            distance=distance,
+            x=position,
+            y=0.0,
+            slope_angle=fallback_road_angle,
+        )
+
+    return SimulationHistoryPoint(
+        time=time,
+        position=position,
+        speed=abs(speed),
+        distance=distance,
+        x=track_point.x,
+        y=track_point.y,
+        elevation=track_point.elevation,
+        heading=track_point.heading,
+        slope_angle=track_point.slope_angle,
+        grade_percent=track_point.grade_percent,
+        curvature=track_point.curvature,
+    )
+
+
 def run_simulation(
     *,
     initial_position: float,
@@ -64,12 +172,13 @@ def run_simulation(
     rolling_resistance_coefficient: float,
     mass: float,
     road_angle: float,
+    track_points: Sequence[TrackPoint] | None = None,
     gravity: float = STANDARD_GRAVITY,
 ) -> SimulationResult:
     """Run the car simulation and return UI-ready summary and history data.
 
-    The returned data includes final time, final speed, total distance, energy
-    used, efficiency, and position/speed history for visualization.
+    The returned data includes final time, final speed, distance traveled,
+    energy used, efficiency, and position/speed history for visualization.
     """
     if duration < 0:
         raise ValueError("duration must be greater than or equal to 0")
@@ -83,18 +192,27 @@ def run_simulation(
     position = initial_position
     velocity = initial_velocity
     current_time = 0.0
-    total_distance = 0.0
+    distance_traveled = 0.0
+    final_force_breakdown: ForceBreakdownResult | None = None
     history: list[SimulationHistoryPoint] = [
-        {
-            "time": current_time,
-            "position": position,
-            "speed": abs(velocity),
-        }
+        create_history_point(
+            time=current_time,
+            position=position,
+            speed=velocity,
+            distance=distance_traveled,
+            track_points=track_points,
+            fallback_road_angle=road_angle,
+        )
     ]
 
     while current_time < duration:
         current_time_step = min(time_step, duration - current_time)
         previous_position = position
+        current_road_angle = get_track_slope_angle(
+            track_points=track_points,
+            distance=distance_traveled,
+            fallback_road_angle=road_angle,
+        )
 
         forces = calculate_forces(
             drive_force=drive_force,
@@ -104,26 +222,36 @@ def run_simulation(
             velocity=velocity,
             rolling_resistance_coefficient=rolling_resistance_coefficient,
             mass=mass,
-            road_angle=road_angle,
+            road_angle=current_road_angle,
             gravity=gravity,
+        )
+        final_force_breakdown = ForceBreakdownResult(
+            driving=forces.driving,
+            aerodynamic_drag=forces.aerodynamic_drag,
+            rolling_resistance=forces.rolling_resistance,
+            slope=forces.slope,
+            net=forces.net,
         )
         acceleration = calculate_acceleration(forces.net, mass)
         velocity = update_velocity(velocity, acceleration, current_time_step)
         position = update_position(position, velocity, current_time_step)
-        total_distance += abs(position - previous_position)
+        distance_traveled += abs(position - previous_position)
         current_time += current_time_step
 
         history.append(
-            {
-                "time": current_time,
-                "position": position,
-                "speed": abs(velocity),
-            }
+            create_history_point(
+                time=current_time,
+                position=position,
+                speed=velocity,
+                distance=distance_traveled,
+                track_points=track_points,
+                fallback_road_angle=current_road_angle,
+            )
         )
 
     energy_used = calculate_energy_used(
         driving_force=drive_force,
-        distance_traveled=total_distance,
+        distance_traveled=distance_traveled,
     )
     initial_kinetic_energy = 0.5 * mass * initial_velocity**2
     final_kinetic_energy = 0.5 * mass * velocity**2
@@ -134,11 +262,24 @@ def run_simulation(
         else 0.0
     )
 
-    return {
-        "final_time": current_time,
-        "final_speed": abs(velocity),
-        "total_distance": total_distance,
-        "energy_used": energy_used,
-        "efficiency": efficiency,
-        "history": history,
-    }
+    return SimulationResult(
+        final_time=current_time,
+        final_speed=abs(velocity),
+        distance_traveled=distance_traveled,
+        energy_used=energy_used,
+        efficiency=efficiency,
+        history=history,
+        force_breakdown=final_force_breakdown,
+    )
+
+
+def _interpolate(start: float, end: float, interpolation: float) -> float:
+    return start + (end - start) * interpolation
+
+
+def _interpolate_angle(start: float, end: float, interpolation: float) -> float:
+    return start + _normalize_angle(end - start) * interpolation
+
+
+def _normalize_angle(angle: float) -> float:
+    return (angle + pi) % (2 * pi) - pi
