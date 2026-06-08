@@ -12,14 +12,23 @@ from ..models.simulation_result import (
     SimulationResult,
 )
 from ..models.track_result import TrackPoint
-from .constants import STANDARD_GRAVITY
+from .constants import (
+    DEFAULT_INITIAL_POSITION,
+    KINETIC_ENERGY_FACTOR,
+    MIN_DISTANCE,
+    MIN_DRIVE_FORCE,
+    MIN_ENERGY,
+    MIN_MASS,
+    MIN_TIME_STEP,
+    STANDARD_GRAVITY,
+)
 from .efficiency import calculate_efficiency, calculate_energy_used
 from .forces import calculate_forces
 
 
 def calculate_acceleration(net_force: float, mass: float) -> float:
     """Calculate acceleration using Newton's second law: acceleration = force / mass."""
-    if mass <= 0:
+    if mass < MIN_MASS:
         raise ValueError("mass must be greater than 0")
 
     return net_force / mass
@@ -27,7 +36,7 @@ def calculate_acceleration(net_force: float, mass: float) -> float:
 
 def update_velocity(current_velocity: float, acceleration: float, time_step: float) -> float:
     """Update velocity using velocity = current_velocity + acceleration * time_step."""
-    if time_step < 0:
+    if time_step < MIN_DISTANCE:
         raise ValueError("time_step must be greater than or equal to 0")
 
     return current_velocity + acceleration * time_step
@@ -35,7 +44,7 @@ def update_velocity(current_velocity: float, acceleration: float, time_step: flo
 
 def update_position(current_position: float, velocity: float, time_step: float) -> float:
     """Update position using position = current_position + velocity * time_step."""
-    if time_step < 0:
+    if time_step < MIN_DISTANCE:
         raise ValueError("time_step must be greater than or equal to 0")
 
     return current_position + velocity * time_step
@@ -67,7 +76,7 @@ def get_track_point_at_distance(
         return track_points[0]
 
     track_length = track_points[-1].distance
-    if track_length <= 0:
+    if track_length <= MIN_DISTANCE:
         return track_points[0]
 
     track_distance = distance % track_length
@@ -84,7 +93,7 @@ def get_track_point_at_distance(
     next_point = track_points[next_index]
     segment_distance = next_point.distance - previous_point.distance
 
-    if segment_distance <= 0:
+    if segment_distance <= MIN_DISTANCE:
         return previous_point
 
     interpolation = (track_distance - previous_point.distance) / segment_distance
@@ -140,7 +149,7 @@ def create_history_point(
             speed=abs(speed),
             distance=distance,
             x=position,
-            y=0.0,
+            y=DEFAULT_INITIAL_POSITION,
             slope_angle=fallback_road_angle,
         )
 
@@ -180,19 +189,19 @@ def run_simulation(
     The returned data includes final time, final speed, distance traveled,
     energy used, efficiency, and position/speed history for visualization.
     """
-    if duration < 0:
+    if duration < MIN_DISTANCE:
         raise ValueError("duration must be greater than or equal to 0")
 
-    if time_step <= 0:
+    if time_step < MIN_TIME_STEP:
         raise ValueError("time_step must be greater than 0")
 
-    if drive_force < 0:
+    if drive_force < MIN_DRIVE_FORCE:
         raise ValueError("drive_force must be greater than or equal to 0")
 
     position = initial_position
     velocity = initial_velocity
-    current_time = 0.0
-    distance_traveled = 0.0
+    current_time = MIN_DISTANCE
+    distance_traveled = MIN_DISTANCE
     final_force_breakdown: ForceBreakdownResult | None = None
     history: list[SimulationHistoryPoint] = [
         create_history_point(
@@ -253,13 +262,13 @@ def run_simulation(
         driving_force=drive_force,
         distance_traveled=distance_traveled,
     )
-    initial_kinetic_energy = 0.5 * mass * initial_velocity**2
-    final_kinetic_energy = 0.5 * mass * velocity**2
-    useful_energy = max(0.0, final_kinetic_energy - initial_kinetic_energy)
+    initial_kinetic_energy = KINETIC_ENERGY_FACTOR * mass * initial_velocity**2
+    final_kinetic_energy = KINETIC_ENERGY_FACTOR * mass * velocity**2
+    useful_energy = max(MIN_ENERGY, final_kinetic_energy - initial_kinetic_energy)
     efficiency = (
         calculate_efficiency(useful_energy, energy_used)
-        if energy_used > 0
-        else 0.0
+        if energy_used > MIN_ENERGY
+        else MIN_ENERGY
     )
 
     return SimulationResult(

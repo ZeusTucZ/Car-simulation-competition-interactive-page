@@ -9,10 +9,14 @@ from ..models.car_params import CarParams
 from ..models.track_params import TrackLineType, TrackParams
 from ..simulation.constants import (
     AIR_DENSITY_SEA_LEVEL,
+    DEFAULT_INITIAL_VELOCITY,
     DEFAULT_INITIAL_POSITION,
     DEFAULT_ROAD_ANGLE,
     DEFAULT_SIMULATION_DURATION,
     DEFAULT_TIME_STEP,
+    MIN_DRIVE_FORCE,
+    MIN_MASS,
+    MIN_VELOCITY,
 )
 from ..simulation.physics import run_simulation
 from ..simulation.track import process_track
@@ -25,12 +29,12 @@ SUPPORTED_TRACK_ID = "centerline"
 class SimulationRequest(BaseModel):
     """Car and track parameters received from the React UI."""
 
-    mass: float = Field(..., gt=0)
-    drive_force: float = Field(..., ge=0)
+    mass: float = Field(..., ge=MIN_MASS)
+    drive_force: float = Field(..., ge=MIN_DRIVE_FORCE)
     drag_coefficient: float = Field(..., ge=0)
     frontal_area: float = Field(..., gt=0)
     rolling_resistance_coefficient: float = Field(..., ge=0)
-    initial_velocity: float = Field(0.0, ge=0)
+    initial_velocity: float = Field(DEFAULT_INITIAL_VELOCITY, ge=MIN_VELOCITY)
     track_id: str = Field(SUPPORTED_TRACK_ID, min_length=1)
     line_type: TrackLineType = "centerline"
 

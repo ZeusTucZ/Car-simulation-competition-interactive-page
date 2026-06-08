@@ -1,7 +1,7 @@
-
 # Environment constants
 STANDARD_GRAVITY = 9.81                 # m/s^2
 AIR_DENSITY_SEA_LEVEL = 1.225           # kg/m^3
+EARTH_RADIUS_METERS = 6_371_000.0       # meters
 
 # Simulation defaults
 DEFAULT_INITIAL_POSITION = 0.0          # meters

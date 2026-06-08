@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import sin
 
-from .constants import STANDARD_GRAVITY
+from .constants import DRAG_EQUATION_FACTOR, STANDARD_GRAVITY
 
 @dataclass(frozen=True)
 class ForceBreakdown:
@@ -39,7 +39,13 @@ def calculate_aerodynamic_drag(
     velocity: float,
 ) -> float:
     """Calculate aerodynamic drag using 0.5 * airDensity * Cd * frontalArea * velocity^2."""
-    return 0.5 * air_density * drag_coefficient * frontal_area * velocity**2
+    return (
+        DRAG_EQUATION_FACTOR
+        * air_density
+        * drag_coefficient
+        * frontal_area
+        * velocity**2
+    )
 
 
 def calculate_rolling_resistance(

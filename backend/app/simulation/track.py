@@ -8,9 +8,9 @@ from math import atan2, cos, hypot, pi, radians
 from pathlib import Path
 
 from ..models.track_result import TrackPoint
+from .constants import EARTH_RADIUS_METERS, MIN_DISTANCE, PERCENT_MULTIPLIER
 
 
-EARTH_RADIUS_METERS = 6_371_000.0
 DEFAULT_CENTERLINE_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "tracks" / "centerline.csv"
 )
@@ -116,7 +116,7 @@ def calculate_cumulative_distances(points: list[LocalTrackPoint]) -> list[float]
     if not points:
         return []
 
-    distances = [0.0]
+    distances = [MIN_DISTANCE]
 
     for index in range(1, len(points)):
         segment_distance = calculate_segment_distance(points[index - 1], points[index])
@@ -134,7 +134,7 @@ def calculate_slope_angle(start: LocalTrackPoint, end: LocalTrackPoint) -> float
     """Calculate slope angle in radians between two local track points."""
     horizontal_distance = calculate_segment_distance(start, end)
 
-    if horizontal_distance == 0:
+    if horizontal_distance <= MIN_DISTANCE:
         return 0.0
 
     return atan2(end.elevation - start.elevation, horizontal_distance)
@@ -144,10 +144,14 @@ def calculate_grade_percent(start: LocalTrackPoint, end: LocalTrackPoint) -> flo
     """Calculate track grade percent between two local track points."""
     horizontal_distance = calculate_segment_distance(start, end)
 
-    if horizontal_distance == 0:
+    if horizontal_distance <= MIN_DISTANCE:
         return 0.0
 
-    return ((end.elevation - start.elevation) / horizontal_distance) * 100
+    return (
+        (end.elevation - start.elevation)
+        / horizontal_distance
+        * PERCENT_MULTIPLIER
+    )
 
 
 def calculate_curvature(
@@ -156,7 +160,7 @@ def calculate_curvature(
     distance: float,
 ) -> float:
     """Estimate curvature as change in heading divided by distance."""
-    if distance == 0:
+    if distance <= MIN_DISTANCE:
         return 0.0
 
     return _normalize_angle(next_heading - previous_heading) / distance
