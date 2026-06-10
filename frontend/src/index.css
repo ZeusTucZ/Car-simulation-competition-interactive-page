@@ -1,1 +1,154 @@
 @import "tailwindcss";
+
+@theme {
+  --color-neon: #22e5ff;
+  --color-neon-soft: #7df3ff;
+  --color-neon-dim: #0e7490;
+  --color-lime-neon: #b4ff39;
+  --color-ink: #04070f;
+  --color-panel: #0a1424;
+  --color-panel-2: #0d1a2e;
+}
+
+body {
+  background-color: var(--color-ink);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(34, 229, 255, 0.09), transparent),
+    linear-gradient(rgba(34, 229, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 229, 255, 0.025) 1px, transparent 1px);
+  background-size: auto, 44px 44px, 44px 44px;
+}
+
+.glow-text {
+  text-shadow:
+    0 0 8px rgba(34, 229, 255, 0.85),
+    0 0 28px rgba(34, 229, 255, 0.45);
+}
+
+.glow-text-lime {
+  text-shadow:
+    0 0 8px rgba(180, 255, 57, 0.85),
+    0 0 28px rgba(180, 255, 57, 0.4);
+}
+
+.glow-box {
+  box-shadow:
+    0 0 14px rgba(34, 229, 255, 0.25),
+    inset 0 0 18px rgba(34, 229, 255, 0.05);
+}
+
+/* ---- neon range sliders ---- */
+input[type="range"].neon-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 9999px;
+  background:
+    linear-gradient(90deg, var(--color-neon), var(--color-neon-soft)) 0 / var(--fill, 50%) 100% no-repeat,
+    rgba(148, 163, 184, 0.2);
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"].neon-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-neon);
+  border: 3px solid var(--color-ink);
+  box-shadow:
+    0 0 10px var(--color-neon),
+    0 0 24px rgba(34, 229, 255, 0.55);
+  transition: transform 0.15s ease;
+}
+
+input[type="range"].neon-range::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+input[type="range"].neon-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-neon);
+  border: 3px solid var(--color-ink);
+  box-shadow:
+    0 0 10px var(--color-neon),
+    0 0 24px rgba(34, 229, 255, 0.55);
+}
+
+/* ---- rain animation (SVG lines) ---- */
+@keyframes rain-fall {
+  from {
+    transform: translateY(-60px);
+    opacity: 0.9;
+  }
+  to {
+    transform: translateY(380px);
+    opacity: 0.2;
+  }
+}
+
+.rain-drop {
+  animation: rain-fall 0.75s linear infinite;
+}
+
+/* ---- sun pulse ---- */
+@keyframes sun-pulse {
+  0%, 100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.sun-glow {
+  animation: sun-pulse 3s ease-in-out infinite;
+}
+
+/* ---- track dash flow ---- */
+@keyframes dash-flow {
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+
+.track-flow {
+  stroke-dasharray: 6 18;
+  animation: dash-flow 1.6s linear infinite;
+}
+
+/* ---- result pop ---- */
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.pop-in {
+  animation: pop-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+/* ---- loading spinner ---- */
+@keyframes spin-glow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.neon-spinner {
+  border: 3px solid rgba(34, 229, 255, 0.15);
+  border-top-color: var(--color-neon);
+  border-radius: 50%;
+  animation: spin-glow 0.8s linear infinite;
+  box-shadow: 0 0 16px rgba(34, 229, 255, 0.25);
+}
