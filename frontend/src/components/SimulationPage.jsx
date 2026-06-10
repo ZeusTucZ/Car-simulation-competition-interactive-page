@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  MIN_AVERAGE_SPEED_KMH,
+  LAP_LENGTH_KM,
+  MAX_RACE_MINUTES,
+  TARGET_LAPS,
+  formatRaceTime,
   runSimulation,
   summarizeResult,
 } from "../lib/simulation";
@@ -8,7 +11,9 @@ import {
 const VIEW_W = 860;
 const VIEW_H = 560;
 const PADDING = 40;
-const SPEED_OPTIONS = [1, 3, 8];
+// Sim-seconds per real second: a full 35-minute race plays in 35 s at 60×.
+const SPEED_OPTIONS = [30, 60, 120];
+const TRAIL_WINDOW_S = 50; // comet trail length in sim-seconds
 
 function fitTrack(points) {
   let minX = Infinity;
@@ -68,7 +73,7 @@ export default function SimulationPage({ design, onBackToDesign }) {
   const [result, setResult] = useState(null);
   const [simTime, setSimTime] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [playSpeed, setPlaySpeed] = useState(3);
+  const [playSpeed, setPlaySpeed] = useState(60);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -143,7 +148,9 @@ export default function SimulationPage({ design, onBackToDesign }) {
         <p className="mt-4 text-lg font-semibold text-slate-200">
           Llevando tu carro a la pista…
         </p>
-        <p className="mt-1 text-sm text-slate-500">Calculando la física de tu diseño</p>
+        <p className="mt-1 text-sm text-slate-500">
+          Corriendo las {TARGET_LAPS} vueltas con la física de tu diseño
+        </p>
       </CenteredPanel>
     );
   }
@@ -170,9 +177,18 @@ export default function SimulationPage({ design, onBackToDesign }) {
   const finished = simTime >= finalTime;
   const summary = summarizeResult(result);
   const liveEnergyWh = (design.power * car.distance) / 3600;
+  const lapLengthM = (result.race?.lap_length ?? LAP_LENGTH_KM * 1000);
+  const currentLap = Math.min(
+    Math.floor(car.distance / lapLengthM) + 1,
+    TARGET_LAPS,
+  );
 
+  // Comet-style trail: with 4 overlapping laps a full trail would just
+  // repaint the whole circuit, so only the recent stretch is shown.
   const trailPath = result.history
-    .filter((point) => point.time <= simTime)
+    .filter(
+      (point) => point.time <= simTime && point.time >= simTime - TRAIL_WINDOW_S,
+    )
     .map((point, index) => {
       const { x, y } = project(point);
       return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
@@ -189,7 +205,8 @@ export default function SimulationPage({ design, onBackToDesign }) {
               Pista <span className="glow-text text-neon">Shell Eco-marathon</span>
             </h2>
             <p className="text-xs text-slate-500">
-              Indianápolis · línea de carrera: centerline
+              Indianápolis · {TARGET_LAPS} vueltas de {LAP_LENGTH_KM} km · máximo{" "}
+              {MAX_RACE_MINUTES} min
             </p>
           </div>
           <div className="flex items-center gap-1.5">
@@ -258,18 +275,44 @@ export default function SimulationPage({ design, onBackToDesign }) {
             />
           </div>
           <span className="font-mono text-xs text-slate-400">
-            {simTime.toFixed(1)} s / {finalTime.toFixed(0)} s
+            {formatRaceTime(simTime)} / {formatRaceTime(finalTime)}
           </span>
+          {!finished && (
+            <button
+              type="button"
+              onClick={() => {
+                setSimTime(finalTime);
+                setPlaying(false);
+              }}
+              className="rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:border-lime-400/50 hover:text-lime-neon"
+            >
+              ⏭ Ver resultado
+            </button>
+          )}
         </div>
       </div>
 
       {/* ---- side panel ---- */}
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
+          <HudCard
+            label="Vuelta"
+            value={`${currentLap}`}
+            unit={`de ${TARGET_LAPS}`}
+          />
           <HudCard label="Velocidad" value={(car.speed * 3.6).toFixed(1)} unit="km/h" />
-          <HudCard label="Distancia" value={car.distance.toFixed(0)} unit="m" />
-          <HudCard label="Tiempo" value={car.time.toFixed(1)} unit="s" />
+          <HudCard
+            label="Distancia"
+            value={(car.distance / 1000).toFixed(2)}
+            unit="km"
+          />
+          <HudCard label="Tiempo" value={formatRaceTime(car.time)} unit="min" />
           <HudCard label="Energía usada" value={liveEnergyWh.toFixed(1)} unit="Wh" />
+          <HudCard
+            label="Límite"
+            value={formatRaceTime(MAX_RACE_MINUTES * 60)}
+            unit="min"
+          />
         </div>
 
         {finished ? (
@@ -284,9 +327,10 @@ export default function SimulationPage({ design, onBackToDesign }) {
           />
         ) : (
           <div className="rounded-xl border border-white/10 bg-panel/80 p-4 text-sm text-slate-400">
-            Tu carro está corriendo sobre la línea central de la pista real. Al
-            terminar verás qué tan eficiente fue en{" "}
-            <span className="font-mono text-neon">km/kWh</span>.
+            Tu carro debe completar {TARGET_LAPS} vueltas (
+            {(TARGET_LAPS * LAP_LENGTH_KM).toFixed(1)} km) en máximo{" "}
+            {MAX_RACE_MINUTES} minutos. Al terminar verás qué tan eficiente fue
+            en <span className="font-mono text-neon">km/kWh</span>.
           </div>
         )}
       </div>
@@ -347,15 +391,20 @@ function ResultsCard({ summary, result, onBackToDesign, onReplay }) {
         }`}
       >
         {summary.isValid
-          ? `✓ Intento válido · promedio ${summary.averageSpeedKmh.toFixed(1)} km/h`
-          : `✗ Intento no válido · promedio ${summary.averageSpeedKmh.toFixed(1)} km/h (mínimo ${MIN_AVERAGE_SPEED_KMH})`}
+          ? `✓ Intento válido · ${summary.targetLaps} vueltas en ${formatRaceTime(summary.raceTime)} min`
+          : `✗ Intento no válido · solo ${summary.lapsCompleted.toFixed(1)} de ${summary.targetLaps} vueltas en ${MAX_RACE_MINUTES} min`}
       </div>
 
       <dl className="grid grid-cols-2 gap-2 text-sm">
-        <ResultRow label="Distancia" value={`${(summary.distanceKm * 1000).toFixed(0)} m`} />
+        <ResultRow
+          label="Vueltas"
+          value={`${summary.lapsCompleted.toFixed(summary.isValid ? 0 : 1)} de ${summary.targetLaps}`}
+        />
+        <ResultRow label="Tiempo" value={`${formatRaceTime(summary.raceTime)} min`} />
+        <ResultRow label="Distancia" value={`${summary.distanceKm.toFixed(2)} km`} />
         <ResultRow label="Energía" value={`${summary.energyWh.toFixed(1)} Wh`} />
-        <ResultRow label="Vel. final" value={`${summary.finalSpeedKmh.toFixed(1)} km/h`} />
         <ResultRow label="Vel. promedio" value={`${summary.averageSpeedKmh.toFixed(1)} km/h`} />
+        <ResultRow label="Vel. final" value={`${summary.finalSpeedKmh.toFixed(1)} km/h`} />
       </dl>
 
       {totalResistance > 0 && (
@@ -372,11 +421,13 @@ function ResultsCard({ summary, result, onBackToDesign, onReplay }) {
             <span className="text-fuchsia-300">Llantas {(100 - dragShare).toFixed(0)}%</span>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            {dragShare > 60
-              ? "Tip: haz tu carro más angosto, más bajo o con forma de gota para vencer al aire."
-              : dragShare < 40
-                ? "Tip: baja el peso o usa llantas eco para que el piso frene menos."
-                : "Tip: tu carro está equilibrado. Prueba bajar el empuje del motor para gastar menos."}
+            {!summary.isValid
+              ? "Tip: tu carro fue demasiado lento. Sube el empuje del motor o reduce lo que lo frena (aire y llantas)."
+              : dragShare > 60
+                ? "Tip: haz tu carro más angosto, más bajo o con forma de gota para vencer al aire. Así podrás bajar el empuje y gastar menos."
+                : dragShare < 40
+                  ? "Tip: baja el peso o usa llantas eco para que el piso frene menos. Así podrás bajar el empuje y gastar menos."
+                  : "Tip: tu carro está equilibrado. Prueba bajar el empuje del motor para gastar menos energía."}
           </p>
         </div>
       )}

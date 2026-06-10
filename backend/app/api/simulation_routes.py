@@ -12,11 +12,13 @@ from ..simulation.constants import (
     DEFAULT_INITIAL_VELOCITY,
     DEFAULT_INITIAL_POSITION,
     DEFAULT_ROAD_ANGLE,
-    DEFAULT_SIMULATION_DURATION,
     DEFAULT_TIME_STEP,
+    HISTORY_SAMPLE_INTERVAL,
+    MAX_RACE_DURATION,
     MIN_DRIVE_FORCE,
     MIN_MASS,
     MIN_VELOCITY,
+    TARGET_LAP_COUNT,
 )
 from ..simulation.physics import run_simulation
 from ..simulation.track import process_track
@@ -60,10 +62,12 @@ def run_car_simulation(request: SimulationRequest) -> dict[str, object]:
             raise ValueError(f"track_id must be {SUPPORTED_TRACK_ID}")
 
         track_points = process_track()
+        lap_length = track_points[-1].distance
+        target_distance = TARGET_LAP_COUNT * lap_length
         result = run_simulation(
             initial_position=DEFAULT_INITIAL_POSITION,
             initial_velocity=car.initial_velocity,
-            duration=DEFAULT_SIMULATION_DURATION,
+            duration=MAX_RACE_DURATION,
             time_step=DEFAULT_TIME_STEP,
             drive_force=car.drive_force,
             air_density=AIR_DENSITY_SEA_LEVEL,
@@ -73,11 +77,23 @@ def run_car_simulation(request: SimulationRequest) -> dict[str, object]:
             mass=car.mass,
             road_angle=DEFAULT_ROAD_ANGLE,
             track_points=track_points,
+            target_distance=target_distance,
+            history_interval=HISTORY_SAMPLE_INTERVAL,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
     response = result.to_dict()
+    response["race"] = {
+        "target_laps": TARGET_LAP_COUNT,
+        "max_time": MAX_RACE_DURATION,
+        "lap_length": lap_length,
+        "target_distance": target_distance,
+        "laps_completed": min(
+            result.distance_traveled / lap_length, float(TARGET_LAP_COUNT)
+        ),
+        "finished": result.distance_traveled >= target_distance,
+    }
     response["track"] = {
         "track_id": track.track_id,
         "line_type": track.line_type,

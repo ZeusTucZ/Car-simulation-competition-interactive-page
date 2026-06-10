@@ -2,7 +2,10 @@ import CarCanvas from "./CarCanvas";
 import { ControlGroup, ParamSlider, SegmentedControl } from "./controls";
 import {
   DESIGN_LIMITS,
-  MIN_AVERAGE_SPEED_KMH,
+  LAP_LENGTH_KM,
+  MAX_RACE_MINUTES,
+  RACE_DISTANCE_KM,
+  TARGET_LAPS,
   TIRES,
   estimatePerformance,
 } from "../lib/simulation";
@@ -19,8 +22,9 @@ export default function DesignPage({ design, onChange, onGoToTrack }) {
             Diseña tu carro <span className="glow-text text-neon">eficiente</span>
           </h2>
           <p className="mt-1 text-sm text-slate-400">
-            Mueve los controles y mira cómo cambia tu carro. La meta: recorrer la
-            mayor distancia con la menor energía.
+            Mueve los controles y mira cómo cambia tu carro. El reto: completar{" "}
+            {TARGET_LAPS} vueltas a la pista ({RACE_DISTANCE_KM.toFixed(1)} km)
+            en máximo {MAX_RACE_MINUTES} minutos, gastando la menor energía.
           </p>
         </div>
 
@@ -85,7 +89,7 @@ export default function DesignPage({ design, onChange, onGoToTrack }) {
             value={design.power}
             {...DESIGN_LIMITS.power}
             unit="N"
-            hint={`Más empuje = más velocidad, pero gasta más energía. Necesitas promediar ${MIN_AVERAGE_SPEED_KMH} km/h`}
+            hint={`Más empuje = más velocidad, pero gasta más energía. Necesitas terminar ${TARGET_LAPS} vueltas de ${LAP_LENGTH_KM} km en ${MAX_RACE_MINUTES} min`}
             onChange={onChange}
           />
         </ControlGroup>
@@ -132,7 +136,7 @@ export default function DesignPage({ design, onChange, onGoToTrack }) {
             value={estimate.kmPerKwh.toFixed(0)}
             unit="km/kWh"
             tone="lime"
-            note="Distancia por unidad de energía"
+            note="Solo cuenta si terminas las 4 vueltas a tiempo"
           />
           <EstimateCard
             label="Velocidad máxima"
@@ -141,8 +145,8 @@ export default function DesignPage({ design, onChange, onGoToTrack }) {
             tone="cyan"
             note={
               estimate.likelyValid
-                ? "Suficiente para un intento válido"
-                : `⚠️ Quizá no alcance los ${MIN_AVERAGE_SPEED_KMH} km/h de promedio`
+                ? "Suficiente para terminar las 4 vueltas a tiempo"
+                : "⚠️ Quizá no termine las 4 vueltas en 35 min"
             }
           />
           <EstimateCard

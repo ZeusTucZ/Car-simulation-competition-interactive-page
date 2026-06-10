@@ -14,6 +14,11 @@ DEFAULT_SIMULATION_DURATION = 30.0      # seconds
 DEFAULT_TRACK_DISTANCE = 1000.0         # meters
 MAX_SIMULATION_TIME = 120.0             # seconds
 
+# Official race format: complete the target laps within the time limit
+TARGET_LAP_COUNT = 4
+MAX_RACE_DURATION = 2100.0              # seconds (35 minutes)
+HISTORY_SAMPLE_INTERVAL = 0.5           # seconds between history points sent to the UI
+
 # Physical limits
 MIN_MASS = 0.001                        # kg, avoids division by zero
 MIN_TIME_STEP = 0.001                   # seconds

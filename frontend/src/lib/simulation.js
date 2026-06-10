@@ -6,9 +6,14 @@ const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 export const GRAVITY = 9.81; // m/s^2
 export const AIR_DENSITY = 1.225; // kg/m^3
 
-// Shell Eco-marathon rule: the attempt only counts if the car keeps a
-// minimum average speed, so saving energy by going too slow is invalid.
-export const MIN_AVERAGE_SPEED_KMH = 25;
+// Shell Eco-marathon race format: complete the target laps within the time
+// limit, otherwise the attempt is invalid. Going too slow to save energy
+// therefore doesn't count.
+export const TARGET_LAPS = 4;
+export const MAX_RACE_MINUTES = 35;
+export const LAP_LENGTH_KM = 3.85; // Indianapolis centerline, matches backend data
+export const RACE_DISTANCE_KM = TARGET_LAPS * LAP_LENGTH_KM;
+export const MIN_AVERAGE_SPEED_KMH = RACE_DISTANCE_KM / (MAX_RACE_MINUTES / 60); // ≈ 26.4
 
 export const DESIGN_LIMITS = {
   length: { min: 2.2, max: 3.5, step: 0.05 },
@@ -104,6 +109,7 @@ export async function runSimulation(design) {
 }
 
 export function summarizeResult(result) {
+  const race = result.race;
   const distanceKm = result.distance_traveled / 1000;
   const energyKwh = result.energy_used / 3_600_000;
   const averageSpeedKmh =
@@ -117,6 +123,17 @@ export function summarizeResult(result) {
     kmPerKwh: energyKwh > 0 ? distanceKm / energyKwh : 0,
     averageSpeedKmh,
     finalSpeedKmh: result.final_speed * 3.6,
-    isValid: averageSpeedKmh >= MIN_AVERAGE_SPEED_KMH,
+    raceTime: result.final_time,
+    lapsCompleted: race?.laps_completed ?? 0,
+    targetLaps: race?.target_laps ?? TARGET_LAPS,
+    isValid: race
+      ? race.finished
+      : averageSpeedKmh >= MIN_AVERAGE_SPEED_KMH,
   };
+}
+
+export function formatRaceTime(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.floor(seconds % 60);
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
 }

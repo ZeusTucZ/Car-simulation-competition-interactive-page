@@ -20,6 +20,7 @@ from .constants import (
     MIN_ENERGY,
     MIN_MASS,
     MIN_TIME_STEP,
+    MIN_VELOCITY,
     STANDARD_GRAVITY,
 )
 from .efficiency import calculate_efficiency, calculate_energy_used
@@ -183,11 +184,16 @@ def run_simulation(
     road_angle: float,
     track_points: Sequence[TrackPoint] | None = None,
     gravity: float = STANDARD_GRAVITY,
+    target_distance: float | None = None,
+    history_interval: float | None = None,
 ) -> SimulationResult:
     """Run the car simulation and return UI-ready summary and history data.
 
     The returned data includes final time, final speed, distance traveled,
     energy used, efficiency, and position/speed history for visualization.
+    The simulation stops early once ``target_distance`` is reached, and
+    ``history_interval`` controls how often a history point is recorded
+    (every step by default).
     """
     if duration < MIN_DISTANCE:
         raise ValueError("duration must be greater than or equal to 0")
@@ -198,6 +204,14 @@ def run_simulation(
     if drive_force < MIN_DRIVE_FORCE:
         raise ValueError("drive_force must be greater than or equal to 0")
 
+    if target_distance is not None and target_distance < MIN_DISTANCE:
+        raise ValueError("target_distance must be greater than or equal to 0")
+
+    if history_interval is not None and history_interval < time_step:
+        raise ValueError("history_interval must be greater than or equal to time_step")
+
+    sample_interval = history_interval if history_interval is not None else time_step
+    next_sample_time = sample_interval
     position = initial_position
     velocity = initial_velocity
     current_time = MIN_DISTANCE
@@ -214,7 +228,9 @@ def run_simulation(
         )
     ]
 
-    while current_time < duration:
+    while current_time < duration and (
+        target_distance is None or distance_traveled < target_distance
+    ):
         current_time_step = min(time_step, duration - current_time)
         previous_position = position
         current_road_angle = get_track_slope_angle(
@@ -243,10 +259,27 @@ def run_simulation(
         )
         acceleration = calculate_acceleration(forces.net, mass)
         velocity = update_velocity(velocity, acceleration, current_time_step)
+        # Resistance forces oppose motion; they can slow the car to a stop
+        # but never push it backwards.
+        velocity = max(velocity, MIN_VELOCITY)
         position = update_position(position, velocity, current_time_step)
         distance_traveled += abs(position - previous_position)
         current_time += current_time_step
 
+        if current_time >= next_sample_time - MIN_TIME_STEP / 2:
+            next_sample_time += sample_interval
+            history.append(
+                create_history_point(
+                    time=current_time,
+                    position=position,
+                    speed=velocity,
+                    distance=distance_traveled,
+                    track_points=track_points,
+                    fallback_road_angle=current_road_angle,
+                )
+            )
+
+    if history[-1].time < current_time:
         history.append(
             create_history_point(
                 time=current_time,
@@ -254,7 +287,7 @@ def run_simulation(
                 speed=velocity,
                 distance=distance_traveled,
                 track_points=track_points,
-                fallback_road_angle=current_road_angle,
+                fallback_road_angle=road_angle,
             )
         )
 
