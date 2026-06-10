@@ -9,6 +9,7 @@ from ..models.car_params import CarParams
 from ..models.track_params import TrackLineType, TrackParams
 from ..simulation.constants import (
     AIR_DENSITY_SEA_LEVEL,
+    COAST_HYSTERESIS,
     DEFAULT_INITIAL_VELOCITY,
     DEFAULT_INITIAL_POSITION,
     DEFAULT_ROAD_ANGLE,
@@ -18,6 +19,7 @@ from ..simulation.constants import (
     MIN_DRIVE_FORCE,
     MIN_MASS,
     MIN_VELOCITY,
+    MOTOR_EFFICIENCY,
     TARGET_LAP_COUNT,
 )
 from ..simulation.physics import run_simulation
@@ -37,6 +39,15 @@ class SimulationRequest(BaseModel):
     frontal_area: float = Field(..., gt=0)
     rolling_resistance_coefficient: float = Field(..., ge=0)
     initial_velocity: float = Field(DEFAULT_INITIAL_VELOCITY, ge=MIN_VELOCITY)
+    cruise_speed: float | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Target speed in m/s for the burn-and-coast strategy. The motor "
+            "pushes until slightly above this speed, then coasts until "
+            "slightly below it. Omit to keep the motor on the whole race."
+        ),
+    )
     track_id: str = Field(SUPPORTED_TRACK_ID, min_length=1)
     line_type: TrackLineType = "centerline"
 
@@ -64,6 +75,16 @@ def run_car_simulation(request: SimulationRequest) -> dict[str, object]:
         track_points = process_track()
         lap_length = track_points[-1].distance
         target_distance = TARGET_LAP_COUNT * lap_length
+        coast_high_speed = (
+            request.cruise_speed * (1 + COAST_HYSTERESIS)
+            if request.cruise_speed is not None
+            else None
+        )
+        coast_low_speed = (
+            request.cruise_speed * (1 - COAST_HYSTERESIS)
+            if request.cruise_speed is not None
+            else None
+        )
         result = run_simulation(
             initial_position=DEFAULT_INITIAL_POSITION,
             initial_velocity=car.initial_velocity,
@@ -79,6 +100,9 @@ def run_car_simulation(request: SimulationRequest) -> dict[str, object]:
             track_points=track_points,
             target_distance=target_distance,
             history_interval=HISTORY_SAMPLE_INTERVAL,
+            coast_high_speed=coast_high_speed,
+            coast_low_speed=coast_low_speed,
+            motor_efficiency=MOTOR_EFFICIENCY,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

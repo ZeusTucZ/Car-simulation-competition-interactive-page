@@ -63,6 +63,8 @@ function interpolateHistory(history, time) {
     y: a.y + (b.y - a.y) * t,
     speed: a.speed + (b.speed - a.speed) * t,
     distance: a.distance + (b.distance - a.distance) * t,
+    energy: a.energy + (b.energy - a.energy) * t,
+    motor_on: a.motor_on,
     heading: a.heading,
   };
 }
@@ -176,7 +178,8 @@ export default function SimulationPage({ design, onBackToDesign }) {
   const carAngleDeg = (-car.heading * 180) / Math.PI;
   const finished = simTime >= finalTime;
   const summary = summarizeResult(result);
-  const liveEnergyWh = (design.power * car.distance) / 3600;
+  const liveEnergyWh = (car.energy ?? 0) / 3600;
+  const motorOn = car.motor_on ?? true;
   const lapLengthM = (result.race?.lap_length ?? LAP_LENGTH_KM * 1000);
   const currentLap = Math.min(
     Math.floor(car.distance / lapLengthM) + 1,
@@ -245,10 +248,20 @@ export default function SimulationPage({ design, onBackToDesign }) {
           {/* start line */}
           <StartMarker point={project(result.track.points[0])} />
 
-          {/* car */}
+          {/* car: lime while the motor pushes, cyan while it coasts */}
           <g transform={`translate(${carPos.x} ${carPos.y}) rotate(${carAngleDeg})`}>
-            <circle r="13" fill="#b4ff39" opacity="0.25" filter="url(#trackGlow)" />
-            <path d="M 11 0 L -8 -6 L -5 0 L -8 6 Z" fill="#b4ff39" stroke="#04070f" strokeWidth="1" />
+            <circle
+              r={motorOn ? 15 : 11}
+              fill={motorOn ? "#b4ff39" : "#22e5ff"}
+              opacity="0.3"
+              filter="url(#trackGlow)"
+            />
+            <path
+              d="M 11 0 L -8 -6 L -5 0 L -8 6 Z"
+              fill={motorOn ? "#b4ff39" : "#22e5ff"}
+              stroke="#04070f"
+              strokeWidth="1"
+            />
           </g>
         </svg>
 
@@ -306,12 +319,16 @@ export default function SimulationPage({ design, onBackToDesign }) {
             value={(car.distance / 1000).toFixed(2)}
             unit="km"
           />
-          <HudCard label="Tiempo" value={formatRaceTime(car.time)} unit="min" />
+          <HudCard
+            label="Tiempo"
+            value={formatRaceTime(car.time)}
+            unit={`/ ${MAX_RACE_MINUTES}:00`}
+          />
           <HudCard label="Energía usada" value={liveEnergyWh.toFixed(1)} unit="Wh" />
           <HudCard
-            label="Límite"
-            value={formatRaceTime(MAX_RACE_MINUTES * 60)}
-            unit="min"
+            label="Motor"
+            value={motorOn ? "🔥 Impulsa" : "💨 Planea"}
+            unit=""
           />
         </div>
 
@@ -422,12 +439,12 @@ function ResultsCard({ summary, result, onBackToDesign, onReplay }) {
           </div>
           <p className="mt-2 text-xs text-slate-500">
             {!summary.isValid
-              ? "Tip: tu carro fue demasiado lento. Sube el empuje del motor o reduce lo que lo frena (aire y llantas)."
+              ? "Tip: tu carro fue demasiado lento. Sube tu velocidad objetivo, o dale más empuje si no la alcanza."
               : dragShare > 60
-                ? "Tip: haz tu carro más angosto, más bajo o con forma de gota para vencer al aire. Así podrás bajar el empuje y gastar menos."
+                ? "Tip: el aire es tu enemigo. Haz tu carro más angosto, más bajo o con forma de gota — o baja tu velocidad objetivo: el aire cobra al cuadrado."
                 : dragShare < 40
-                  ? "Tip: baja el peso o usa llantas eco para que el piso frene menos. Así podrás bajar el empuje y gastar menos."
-                  : "Tip: tu carro está equilibrado. Prueba bajar el empuje del motor para gastar menos energía."}
+                  ? "Tip: el piso te frena. Baja el peso o usa llantas eco para que cada acelerón te lleve más lejos."
+                  : "Tip: tu carro está equilibrado. Prueba bajar tu velocidad objetivo para gastar menos, sin pasarte de los 35 min."}
           </p>
         </div>
       )}

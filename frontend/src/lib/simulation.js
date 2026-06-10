@@ -15,12 +15,18 @@ export const LAP_LENGTH_KM = 3.85; // Indianapolis centerline, matches backend d
 export const RACE_DISTANCE_KM = TARGET_LAPS * LAP_LENGTH_KM;
 export const MIN_AVERAGE_SPEED_KMH = RACE_DISTANCE_KM / (MAX_RACE_MINUTES / 60); // ≈ 26.4
 
+// Mirrors the backend drivetrain model: the motor pushes in bursts around
+// the cruise speed and converts battery energy with this efficiency.
+export const MOTOR_EFFICIENCY = 0.85;
+export const COAST_HYSTERESIS = 0.1;
+
 export const DESIGN_LIMITS = {
   length: { min: 2.2, max: 3.5, step: 0.05 },
   width: { min: 0.55, max: 1.3, step: 0.05 },
   height: { min: 0.5, max: 1.1, step: 0.05 },
   mass: { min: 60, max: 200, step: 5 },
   power: { min: 10, max: 150, step: 5 },
+  cruise: { min: 24, max: 48, step: 1 },
   aero: { min: 0, max: 100, step: 1 },
 };
 
@@ -30,6 +36,7 @@ export const DEFAULT_DESIGN = {
   height: 0.7, // m
   mass: 95, // kg (car + driver)
   power: 60, // N of drive force
+  cruise: 30, // km/h target speed for burn & coast
   aero: 70, // 0 = box, 100 = water drop
   tires: "eco", // eco | standard | rain
   weather: "sunny", // sunny | rainy
@@ -73,13 +80,31 @@ export function estimatePerformance(design) {
     0.5 * AIR_DENSITY * physics.dragCoefficient * physics.frontalArea;
   const surplus = physics.driveForce - rollingForce;
   const topSpeedMs = surplus > 0 ? Math.sqrt(surplus / dragFactor) : 0;
-  const kmPerKwh = physics.driveForce > 0 ? 3600 / physics.driveForce : 0;
+  const topSpeedKmh = topSpeedMs * 3.6;
+
+  // Burn & coast around the cruise speed: over a full cycle the motor's
+  // work equals the work done against air and rolling resistance, so the
+  // energy per meter is the average resistive force (divided by the motor
+  // efficiency). If the car can't reach the cruise speed, the motor stays
+  // on the whole race and the energy per meter is the full drive force.
+  const cruiseMs = design.cruise / 3.6;
+  const canCruise = topSpeedMs >= cruiseMs * (1 - COAST_HYSTERESIS);
+  const resistiveForce = dragFactor * cruiseMs ** 2 + rollingForce;
+  const energyPerMeter = canCruise ? resistiveForce : physics.driveForce;
+  const kmPerKwh =
+    energyPerMeter > 0 ? (3600 * MOTOR_EFFICIENCY) / energyPerMeter : 0;
+
+  const averageKmh = canCruise ? design.cruise : topSpeedKmh;
+  const raceMinutes =
+    averageKmh > 0 ? (RACE_DISTANCE_KM / averageKmh) * 60 : Infinity;
 
   return {
     physics,
-    topSpeedKmh: topSpeedMs * 3.6,
+    topSpeedKmh,
+    canCruise,
     kmPerKwh,
-    likelyValid: topSpeedMs * 3.6 > MIN_AVERAGE_SPEED_KMH * 1.15,
+    raceMinutes,
+    likelyValid: raceMinutes <= MAX_RACE_MINUTES,
   };
 }
 
@@ -95,6 +120,7 @@ export async function runSimulation(design) {
       frontal_area: physics.frontalArea,
       rolling_resistance_coefficient: physics.rollingResistance,
       initial_velocity: 0,
+      cruise_speed: design.cruise / 3.6,
       track_id: "centerline",
       line_type: "centerline",
     }),

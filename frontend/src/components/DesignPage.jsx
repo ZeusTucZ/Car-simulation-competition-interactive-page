@@ -82,14 +82,23 @@ export default function DesignPage({ design, onChange, onGoToTrack }) {
           />
         </ControlGroup>
 
-        <ControlGroup title="Motor">
+        <ControlGroup title="Motor y estrategia">
           <ParamSlider
             label="Empuje del motor"
             name="power"
             value={design.power}
             {...DESIGN_LIMITS.power}
             unit="N"
-            hint={`Más empuje = más velocidad, pero gasta más energía. Necesitas terminar ${TARGET_LAPS} vueltas de ${LAP_LENGTH_KM} km en ${MAX_RACE_MINUTES} min`}
+            hint="La fuerza de cada acelerón. Debe alcanzar para vencer al aire y a las llantas"
+            onChange={onChange}
+          />
+          <ParamSlider
+            label="Velocidad objetivo"
+            name="cruise"
+            value={design.cruise}
+            {...DESIGN_LIMITS.cruise}
+            unit="km/h"
+            hint={`Tu piloto acelera y luego planea alrededor de esta velocidad. Más rápido = terminas antes, pero el aire te cobra al cuadrado. Recuerda: ${TARGET_LAPS} vueltas de ${LAP_LENGTH_KM} km en ${MAX_RACE_MINUTES} min`}
             onChange={onChange}
           />
         </ControlGroup>
@@ -130,7 +139,7 @@ export default function DesignPage({ design, onChange, onGoToTrack }) {
           <CarCanvas design={design} />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <EstimateCard
             label="Eficiencia estimada"
             value={estimate.kmPerKwh.toFixed(0)}
@@ -139,14 +148,29 @@ export default function DesignPage({ design, onChange, onGoToTrack }) {
             note="Solo cuenta si terminas las 4 vueltas a tiempo"
           />
           <EstimateCard
+            label="Tiempo de carrera"
+            value={
+              Number.isFinite(estimate.raceMinutes)
+                ? estimate.raceMinutes.toFixed(0)
+                : "∞"
+            }
+            unit="min"
+            tone="cyan"
+            note={
+              estimate.likelyValid
+                ? `Dentro del límite de ${MAX_RACE_MINUTES} min`
+                : `⚠️ Fuera del límite de ${MAX_RACE_MINUTES} min`
+            }
+          />
+          <EstimateCard
             label="Velocidad máxima"
             value={estimate.topSpeedKmh.toFixed(0)}
             unit="km/h"
             tone="cyan"
             note={
-              estimate.likelyValid
-                ? "Suficiente para terminar las 4 vueltas a tiempo"
-                : "⚠️ Quizá no termine las 4 vueltas en 35 min"
+              estimate.canCruise
+                ? `Alcanza tu objetivo de ${design.cruise} km/h`
+                : "⚠️ No alcanza tu velocidad objetivo"
             }
           />
           <EstimateCard

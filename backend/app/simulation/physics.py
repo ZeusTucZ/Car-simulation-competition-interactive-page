@@ -23,7 +23,7 @@ from .constants import (
     MIN_VELOCITY,
     STANDARD_GRAVITY,
 )
-from .efficiency import calculate_efficiency, calculate_energy_used
+from .efficiency import calculate_efficiency
 from .forces import calculate_forces
 
 
@@ -139,6 +139,8 @@ def create_history_point(
     distance: float,
     track_points: Sequence[TrackPoint] | None,
     fallback_road_angle: float,
+    motor_on: bool = True,
+    energy: float = 0.0,
 ) -> SimulationHistoryPoint:
     """Create a UI history point, mapped to the track when track data exists."""
     track_point = get_track_point_at_distance(track_points, distance)
@@ -152,6 +154,8 @@ def create_history_point(
             x=position,
             y=DEFAULT_INITIAL_POSITION,
             slope_angle=fallback_road_angle,
+            motor_on=motor_on,
+            energy=energy,
         )
 
     return SimulationHistoryPoint(
@@ -166,6 +170,8 @@ def create_history_point(
         slope_angle=track_point.slope_angle,
         grade_percent=track_point.grade_percent,
         curvature=track_point.curvature,
+        motor_on=motor_on,
+        energy=energy,
     )
 
 
@@ -186,6 +192,9 @@ def run_simulation(
     gravity: float = STANDARD_GRAVITY,
     target_distance: float | None = None,
     history_interval: float | None = None,
+    coast_high_speed: float | None = None,
+    coast_low_speed: float | None = None,
+    motor_efficiency: float = 1.0,
 ) -> SimulationResult:
     """Run the car simulation and return UI-ready summary and history data.
 
@@ -194,6 +203,14 @@ def run_simulation(
     The simulation stops early once ``target_distance`` is reached, and
     ``history_interval`` controls how often a history point is recorded
     (every step by default).
+
+    When ``coast_high_speed``/``coast_low_speed`` are given the driver uses a
+    burn-and-coast strategy: the motor pushes until the car reaches the high
+    speed, then turns off and lets the car glide until it slows to the low
+    speed. Energy is only spent while the motor pushes, so the car's drag and
+    rolling resistance determine how far each burst of energy takes it.
+    ``motor_efficiency`` converts mechanical work into the electrical energy
+    drawn from the battery.
     """
     if duration < MIN_DISTANCE:
         raise ValueError("duration must be greater than or equal to 0")
@@ -210,12 +227,25 @@ def run_simulation(
     if history_interval is not None and history_interval < time_step:
         raise ValueError("history_interval must be greater than or equal to time_step")
 
+    if (coast_high_speed is None) != (coast_low_speed is None):
+        raise ValueError("coast_high_speed and coast_low_speed must be given together")
+
+    if coast_high_speed is not None and not (
+        MIN_VELOCITY <= coast_low_speed <= coast_high_speed
+    ):
+        raise ValueError("coast speeds must satisfy 0 <= low <= high")
+
+    if not 0 < motor_efficiency <= 1:
+        raise ValueError("motor_efficiency must be between 0 and 1")
+
     sample_interval = history_interval if history_interval is not None else time_step
     next_sample_time = sample_interval
     position = initial_position
     velocity = initial_velocity
     current_time = MIN_DISTANCE
     distance_traveled = MIN_DISTANCE
+    energy_used = MIN_ENERGY
+    motor_on = True
     final_force_breakdown: ForceBreakdownResult | None = None
     history: list[SimulationHistoryPoint] = [
         create_history_point(
@@ -225,6 +255,8 @@ def run_simulation(
             distance=distance_traveled,
             track_points=track_points,
             fallback_road_angle=road_angle,
+            motor_on=motor_on,
+            energy=energy_used,
         )
     ]
 
@@ -239,8 +271,15 @@ def run_simulation(
             fallback_road_angle=road_angle,
         )
 
+        if coast_high_speed is not None:
+            if motor_on and velocity >= coast_high_speed:
+                motor_on = False
+            elif not motor_on and velocity <= coast_low_speed:
+                motor_on = True
+        current_drive_force = drive_force if motor_on else MIN_DRIVE_FORCE
+
         forces = calculate_forces(
-            drive_force=drive_force,
+            drive_force=current_drive_force,
             air_density=air_density,
             drag_coefficient=drag_coefficient,
             frontal_area=frontal_area,
@@ -264,6 +303,9 @@ def run_simulation(
         velocity = max(velocity, MIN_VELOCITY)
         position = update_position(position, velocity, current_time_step)
         distance_traveled += abs(position - previous_position)
+        energy_used += (
+            current_drive_force * abs(position - previous_position) / motor_efficiency
+        )
         current_time += current_time_step
 
         if current_time >= next_sample_time - MIN_TIME_STEP / 2:
@@ -276,6 +318,8 @@ def run_simulation(
                     distance=distance_traveled,
                     track_points=track_points,
                     fallback_road_angle=current_road_angle,
+                    motor_on=motor_on,
+                    energy=energy_used,
                 )
             )
 
@@ -288,13 +332,11 @@ def run_simulation(
                 distance=distance_traveled,
                 track_points=track_points,
                 fallback_road_angle=road_angle,
+                motor_on=motor_on,
+                energy=energy_used,
             )
         )
 
-    energy_used = calculate_energy_used(
-        driving_force=drive_force,
-        distance_traveled=distance_traveled,
-    )
     initial_kinetic_energy = KINETIC_ENERGY_FACTOR * mass * initial_velocity**2
     final_kinetic_energy = KINETIC_ENERGY_FACTOR * mass * velocity**2
     useful_energy = max(MIN_ENERGY, final_kinetic_energy - initial_kinetic_energy)

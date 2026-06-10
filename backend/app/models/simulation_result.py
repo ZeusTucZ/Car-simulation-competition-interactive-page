@@ -21,6 +21,8 @@ class SimulationHistoryPoint:
     slope_angle: float = 0.0
     grade_percent: float = 0.0
     curvature: float = 0.0
+    motor_on: bool = True
+    energy: float = 0.0
 
 
 @dataclass(frozen=True)

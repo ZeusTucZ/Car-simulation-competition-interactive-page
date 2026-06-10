@@ -19,6 +19,10 @@ TARGET_LAP_COUNT = 4
 MAX_RACE_DURATION = 2100.0              # seconds (35 minutes)
 HISTORY_SAMPLE_INTERVAL = 0.5           # seconds between history points sent to the UI
 
+# Driving strategy and drivetrain
+MOTOR_EFFICIENCY = 0.85                 # electrical energy converted to mechanical work
+COAST_HYSTERESIS = 0.10                 # burn/coast window around the cruise speed
+
 # Physical limits
 MIN_MASS = 0.001                        # kg, avoids division by zero
 MIN_TIME_STEP = 0.001                   # seconds
